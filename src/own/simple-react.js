@@ -4,7 +4,7 @@ function createElement(type, props, ...children) {
     props: {
       ...props,
       children: children.map((child) =>
-        typeof child === 'object' ? child : createTextElement(child),
+        typeof child === 'object' ? child : createTextElement(children),
       ),
     },
   };
@@ -21,20 +21,19 @@ function createTextElement(text) {
 }
 
 function createDom(fiber) {
-  console.log(fiber);
   const dom =
     fiber.type === 'TEXT_ELEMENT'
       ? document.createTextNode('')
       : document.createElement(fiber.type);
 
   updateDom(dom, {}, fiber.props);
+  console.log(dom);
   return dom;
 }
 
 // 渲染dom
 function render(element, container) {
   // set nextUnitOfWork to the root of the fiber tree.
-  console.log(element);
   wipRoot = {
     dom: container,
     props: {
@@ -58,7 +57,7 @@ function workLoop(deadline) {
     nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
     shouldYield = deadline.timeRemaining() < 1;
   }
-  if (!nextUnitOfWork && wipRoot) commitRoot();
+  if (!nextUnitOfWork && !wipRoot) commitRoot();
 
   requestIdleCallback(workLoop);
 }
@@ -93,7 +92,6 @@ function performUnitOfWork(fiber) {
   }
 }
 
-// 调和子代
 function reconcileChildren(wipFiber, elements) {
   let index = 0;
   let oldFiber = wipFiber.alternate && wipFiber.alternate.child;
@@ -155,21 +153,16 @@ function reconcileChildren(wipFiber, elements) {
     index++;
   }
 }
-
-// 是否是事件
 const isEvent = (key) => key.startsWith('on');
-// 是否是属性
 const isProperty = (key) => key !== 'children' && !isEvent(key);
-// 是否消失
 const isGone = (prev, next) => (key) => !(key in next);
-// 是否是新属性
 const isNew = (prev, next) => (key) => prev[key] !== next[key];
 function updateDom(dom, prevProps, nextProps) {
   //Remove old or changed event listeners
   Object.keys(prevProps)
     .filter(isEvent)
     .filter((key) => !(key in nextProps) || isNew(prevProps, nextProps))
-    .forEach((name) => {
+    .map((name) => {
       const eventType = name.substring(2).toUpperCase();
       dom.removeEventListener(eventType, prevProps[name]);
     });
@@ -178,7 +171,7 @@ function updateDom(dom, prevProps, nextProps) {
   Object.keys(nextProps)
     .filter(isEvent)
     .filter(isNew(prevProps, nextProps))
-    .forEach((name) => {
+    .map((name) => {
       const eventType = name.substring(2).toUpperCase();
       dom.addEvent(eventType, nextProps[name]);
     });
@@ -186,14 +179,14 @@ function updateDom(dom, prevProps, nextProps) {
   Object.keys(prevProps)
     .filter(isProperty)
     .filter(isGone(prevProps, nextProps))
-    .forEach((name) => {
+    .map((name) => {
       dom[name] = '';
     });
   // Set new or changed properties
   Object.keys(nextProps)
     .filter(isProperty)
     .filter(isNew(prevProps, nextProps))
-    .forEach((name) => {
+    .map((name) => {
       dom[name] = nextProps[name];
     });
 }
@@ -225,31 +218,21 @@ const OwnReact = {
   createElement,
   render,
 };
-/** 
-const element = <h1 title="foo">Hello</h1>;
+// const element = <h1 title="foo">Hello</h1>;
 
-const element = React.createElement(
-    "h1",
-    { title: "foo" },
-    "Hello"
-  );
-const element = {
-  type: 'h1',
-  props: {
-    title: 'foo',
-    children: 'Hello',
-  },
-};
-const container = document.getElementById('root');
-const node = document.createElement(element.type);
-node['title'] = element.props.title;
-const text = document.createTextNode('');
-text['nodeValue'] = element.props.children;
-node.appendChild(text);
-container.appendChild(node);
-*/
+// const element = React.createElement(
+//     "h1",
+//     { title: "foo" },
+//     "Hello"
+//   );
+// const element = {
+//   type: 'h1',
+//   props: {
+//     title: 'foo',
+//     children: 'Hello',
+//   },
+// };
 
-// ReactDOM.render(element, container);
 /** @jsx OwnReact.createElement */
 const element = <h1 title="foo">Hello</h1>;
 

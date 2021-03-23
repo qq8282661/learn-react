@@ -21,7 +21,6 @@ function createTextElement(text) {
 }
 
 function createDom(fiber) {
-  console.log(fiber);
   const dom =
     fiber.type === 'TEXT_ELEMENT'
       ? document.createTextNode('')
@@ -31,10 +30,72 @@ function createDom(fiber) {
   return dom;
 }
 
+const isEvent = (key) => key.startsWith('on');
+const isProperty = (key) => key !== 'children' && !isEvent(key);
+const isNew = (prev, next) => (key) => prev[key] !== next[key];
+const isGone = (prev, next) => (key) => !(key in next);
+
+function updateDom(dom, prevProps, nextProps) {
+  //Remove old or changed event listeners
+  Object.keys(prevProps)
+    .filter(isEvent)
+    .filter((key) => !(key in nextProps) || isNew(prevProps, nextProps)(key))
+    .map((name) => {
+      const eventType = name.substring(2).toLowerCase();
+      dom.removeEventListener(eventType, prevProps[name]);
+    });
+
+  // 设置已经删除的props为''
+  Object.keys(prevProps)
+    .filter(isProperty)
+    .filter(isGone(prevProps, nextProps))
+    .map((name) => {
+      dom[name] = '';
+    });
+
+  // Set new or changed properties
+  Object.keys(nextProps)
+    .filter(isProperty)
+    .filter(isNew(prevProps, nextProps))
+    .map((name) => {
+      dom[name] = nextProps[name];
+    });
+  // Add event listeners
+  Object.keys(nextProps)
+    .filter(isEvent)
+    .filter(isNew(prevProps, nextProps))
+    .map((name) => {
+      const eventType = name.substring(2).toLowerCase();
+      dom.addEventListener(eventType, nextProps[name]);
+    });
+}
+// 提交跟节点
+function commitRoot() {
+  deletions.map(commitRoot);
+  // add node to dom
+  commitWork(wipRoot.child);
+  currentRoot = wipRoot;
+  console.log(currentRoot);
+  wipRoot = null;
+}
+
+function commitWork(fiber) {
+  if (!fiber) return;
+  const domParent = fiber.parent.dom;
+  if (fiber.effectTag === 'PLACEMENT' && fiber.dom != null) {
+    domParent.appendChild(fiber.dom);
+  } else if (fiber.effectTag === 'UPDATE' && fiber.dom != null) {
+    updateDom(fiber.dom, fiber.alternate.props, fiber.props);
+  } else if (fiber.effectTag === 'DELETION') {
+    domParent.removeChild(fiber.dom);
+  }
+  commitWork(fiber.child);
+  commitWork(fiber.sibling);
+}
 // 渲染dom
 function render(element, container) {
   // set nextUnitOfWork to the root of the fiber tree.
-  console.log(element);
+
   wipRoot = {
     dom: container,
     props: {
@@ -42,10 +103,11 @@ function render(element, container) {
     },
     alternate: currentRoot,
   };
-
+  console.log(wipRoot);
   deletions = [];
   nextUnitOfWork = wipRoot;
 }
+
 let nextUnitOfWork = null;
 let wipRoot = null;
 let currentRoot = null;
@@ -93,7 +155,6 @@ function performUnitOfWork(fiber) {
   }
 }
 
-// 调和子代
 function reconcileChildren(wipFiber, elements) {
   let index = 0;
   let oldFiber = wipFiber.alternate && wipFiber.alternate.child;
@@ -103,7 +164,7 @@ function reconcileChildren(wipFiber, elements) {
     const element = elements[index];
     let newFiber = null;
     //  compare oldFiber to element
-    const sameType = oldFiber && element && element.type === oldFiber.type;
+    const sameType = oldFiber && element && element.type == oldFiber.type;
     if (sameType) {
       // update the node
       newFiber = {
@@ -135,18 +196,11 @@ function reconcileChildren(wipFiber, elements) {
       oldFiber = oldFiber.sibling;
     }
 
-    // const newFiber = {
-    //   type: element.type,
-    //   props: element.props,
-    //   parent: wipFiber,
-    //   dom: null,
-    // };
-
     // 如果是第一个孩子
     if (index === 0) {
       //向父fiber结构树中添加孩子节点
       wipFiber.child = newFiber;
-    } else {
+    } else if (element) {
       // 向前一个兄弟节点添加兄弟节点属性
       prevSibling.sibling = newFiber;
     }
@@ -156,112 +210,28 @@ function reconcileChildren(wipFiber, elements) {
   }
 }
 
-// 是否是事件
-const isEvent = (key) => key.startsWith('on');
-// 是否是属性
-const isProperty = (key) => key !== 'children' && !isEvent(key);
-// 是否消失
-const isGone = (prev, next) => (key) => !(key in next);
-// 是否是新属性
-const isNew = (prev, next) => (key) => prev[key] !== next[key];
-function updateDom(dom, prevProps, nextProps) {
-  //Remove old or changed event listeners
-  Object.keys(prevProps)
-    .filter(isEvent)
-    .filter((key) => !(key in nextProps) || isNew(prevProps, nextProps))
-    .forEach((name) => {
-      const eventType = name.substring(2).toUpperCase();
-      dom.removeEventListener(eventType, prevProps[name]);
-    });
-
-  // Add event listeners
-  Object.keys(nextProps)
-    .filter(isEvent)
-    .filter(isNew(prevProps, nextProps))
-    .forEach((name) => {
-      const eventType = name.substring(2).toUpperCase();
-      dom.addEvent(eventType, nextProps[name]);
-    });
-  // 设置已经删除的props为''
-  Object.keys(prevProps)
-    .filter(isProperty)
-    .filter(isGone(prevProps, nextProps))
-    .forEach((name) => {
-      dom[name] = '';
-    });
-  // Set new or changed properties
-  Object.keys(nextProps)
-    .filter(isProperty)
-    .filter(isNew(prevProps, nextProps))
-    .forEach((name) => {
-      dom[name] = nextProps[name];
-    });
-}
-// 提交跟节点
-function commitRoot() {
-  deletions.map(commitRoot);
-  // add node to dom
-  commitWork(wipRoot.child);
-  currentRoot = wipRoot;
-  wipRoot = null;
-}
-
-function commitWork(fiber) {
-  if (!fiber) return;
-  const domParent = fiber.parent.dom;
-  if (fiber.effectTag === 'PLACEMENT' && fiber.dom != null) {
-    domParent.appendChild(fiber.dom);
-  } else if (fiber.effectTag === 'UPDATE' && fiber.dom != null) {
-    updateDom(fiber.dom, fiber.alternate.props, fiber.props);
-  } else if (fiber.effectTag === 'DELETION') {
-    domParent.removeChild(fiber.dom);
-  }
-  domParent.appendChild(fiber.dom);
-  commitWork(fiber.child);
-  commitWork(fiber.sibling);
-}
-
 const OwnReact = {
   createElement,
   render,
 };
-/** 
-const element = <h1 title="foo">Hello</h1>;
-
-const element = React.createElement(
-    "h1",
-    { title: "foo" },
-    "Hello"
-  );
-const element = {
-  type: 'h1',
-  props: {
-    title: 'foo',
-    children: 'Hello',
-  },
-};
-const container = document.getElementById('root');
-const node = document.createElement(element.type);
-node['title'] = element.props.title;
-const text = document.createTextNode('');
-text['nodeValue'] = element.props.children;
-node.appendChild(text);
-container.appendChild(node);
-*/
-
-// ReactDOM.render(element, container);
 /** @jsx OwnReact.createElement */
-const element = <h1 title="foo">Hello</h1>;
 
 const container = document.getElementById('root');
-// const node = document.createElement(element.type);
-// node['title'] = element.props.title;
-// const text = document.createTextNode('');
-// text['nodeValue'] = element.props.children;
-// node.appendChild(text);
-// container.appendChild(node);
 
-// ReactDOM.render(element, container);
+const updateValue = (e) => {
+  console.log(e);
+  rerender(e.target.value);
+};
 
-// eslint-disable-next-line react/no-deprecated
-OwnReact.render(element, container);
+const rerender = (value) => {
+  const element = (
+    <div>
+      <input onInput={updateValue} value={value} />
+      <h2>Hello {value}</h2>
+    </div>
+  );
+  // eslint-disable-next-line react/no-deprecated
+  OwnReact.render(element, container);
+};
+
+rerender('World');
